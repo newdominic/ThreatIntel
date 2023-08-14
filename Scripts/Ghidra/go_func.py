@@ -134,8 +134,54 @@ def renameFunc116(start):
             func = createFunction(func_address, func_name.getValue())
             print "New function created: %s" % func_name
 
-#Recover function names for Go versions 1.18 and above
+#Recover function names for Go versions 1.18 - 1.19
 def renameFunc118(start):
+    ptrsize= getByte(start.add(7))
+    if ptrsize == 8:
+        nfunctab = getLong(start.add(8))
+        textStart = getLong(start.add(8 + 2*ptrsize))
+        offset = getLong(start.add(8 + 3*ptrsize))
+        funcnametab = start.add(offset)
+        offset = getLong(start.add(8 + 7*ptrsize))
+    else:
+        nfunctab = getInt(start.add(8))
+        textStart = getInt(start.add(8 + 2*ptrsize))
+        offset = getInt(start.add(8 + 3*ptrsize))
+        funcnametab = start.add(offset)
+        offset = getInt(start.add(8 + 7*ptrsize))
+    functab = start.add(offset)
+
+    p = functab
+    functabFieldSize = 4
+    for i in range (nfunctab):
+        func_address = currentProgram.getAddressFactory().getAddress(hex(getInt(p)+textStart).rstrip("L"))
+        p = p.add(functabFieldSize)
+        funcdata_offset = getInt(p)
+        p = p.add(functabFieldSize)
+        name_pointer = functab.add(funcdata_offset + functabFieldSize)
+        name_address = funcnametab.add(getInt(name_pointer))
+        func_name = getDataAt(name_address)
+
+        #Try to define function name string.
+        if func_name is None:
+            try:
+                func_name = createAsciiString(name_address)
+            except:
+                print "ERROR: No name" 
+                continue
+
+        
+        func = getFunctionAt(func_address)
+        if func is not None:
+            func_name_old = func.getName()
+            func.setName(func_name.getValue().replace(" ", ""), USER_DEFINED)
+            print "Function %s renamed as %s" % (func_name_old, func_name.getValue())
+        else:
+            func = createFunction(func_address, func_name.getValue())
+            print "New function created: %s" % func_name
+
+#Recover function names for Go versions 1.20 and above
+def renameFunc120(start):
     ptrsize= getByte(start.add(7))
     if ptrsize == 8:
         nfunctab = getLong(start.add(8))
@@ -194,7 +240,9 @@ else:
     
 if start is not None:
     magic = getInt(start) & 0xffffffff
-    if magic == 0xfffffff0:
+    if magic == 0xfffffff1:
+        renameFunc120(start)
+    elif magic == 0xfffffff0:
         renameFunc118(start)
     elif magic == 0xfffffffa:
         renameFunc116(start)
